@@ -1,8 +1,8 @@
 --------------------------------------------------------------------------------
 -- OpenMapAPI: for other addons (docs/api.md). OpenMapAPI.version goes up when something is added;
 -- nothing in it is changed or taken away without a new major version (OpenMapAPI.major).
--- Read-only, plus "add your own": nothing here lets another addon change OpenMap's own settings
--- or state. Every function is safe to call before the map has opened (it returns nil then).
+-- Read-only, plus "add your own" and the waypoint: nothing else here lets another addon change
+-- OpenMap's own settings or state. Every function is safe to call before the map has opened (it returns nil then).
 --
 -- Positions: `u, v` are a point on OpenMap's stitched Azeroth, 0..1 across and down (the same
 -- space as the in-game report codes); `x, y` a point on a uiMap, 0..1, as Blizzard's map APIs.
@@ -19,7 +19,7 @@ local _, ns = ...
 local S = ns.MapStitch
 local mod = ns:GetModule("worldmap")
 
-local API = { major = 1, version = 4 }
+local API = { major = 1, version = 5 }
 OpenMapAPI = API
 
 local CBH = LibStub and LibStub("CallbackHandler-1.0", true)
@@ -140,6 +140,26 @@ function API.RegisterTownsfolkProvider(owner, provider)
 		error("OpenMapAPI.RegisterTownsfolkProvider(owner, { db = { NPCPointers, npcFlags, QueryNPCSingle [, QueryObjectSingle] }, zones = { GetUiMapIdByAreaId } [, mailboxes] })", 2)
 	end
 	if mod.SetTownsfolkProvider then mod.SetTownsfolkProvider(provider) end
+end
+
+-- (version 5) OpenMap's waypoint, the one a Ctrl-click sets, at a point on a uiMap (0..1): one at a time,
+-- it replaces the last; a click on it takes it off. `title`: TomTom's name for it. False before login
+function API.SetWaypoint(uiMapID, x, y, title)
+	if type(uiMapID) ~= "number" or type(x) ~= "number" or type(y) ~= "number" or not (mod.char and mod.TrackPoint) then return false end
+	mod.TrackPoint(uiMapID, x, y, type(title) == "string" and title or nil)
+	return true
+end
+
+-- (version 5) the waypoint now: uiMapID, x, y; nil when there's none
+function API.GetWaypoint()
+	if not (mod.char and mod.WaypointPoint) then return end
+	local mapID, x, y = mod.WaypointPoint()
+	return mapID, x, y
+end
+
+-- (version 5) the waypoint taken off
+function API.ClearWaypoint()
+	if mod.char and mod.ClearPin then mod.ClearPin() end
 end
 
 -- for Panel.lua: the toggles, as its checklist's rows (each tab's under its section's heading)

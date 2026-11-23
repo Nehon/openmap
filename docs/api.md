@@ -78,6 +78,16 @@ its order.
 
 ## Adding your own
 
+### The waypoint
+
+(version 5) OpenMap's waypoint, the one a Ctrl-click on the map sets. There is one at a time.
+
+| Function | Does |
+| --- | --- |
+| `OM.SetWaypoint(uiMapID, x, y [, title])` | puts the waypoint there, in place of the last one. It is Blizzard's waypoint where the game takes it, else OpenMap's own, and TomTom's too. `title` is TomTom's name for it. False before login |
+| `OM.GetWaypoint()` | `uiMapID, x, y` of the waypoint now, or nil |
+| `OM.ClearWaypoint()` | takes the waypoint off, as a click on it does |
+
 ### A switch in OpenMap's menu
 
 ```lua

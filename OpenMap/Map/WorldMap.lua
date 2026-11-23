@@ -29,7 +29,8 @@ local mod = ns:NewModule("worldmap", {
 		flight = true,
 		playerArrow = true,     -- your own arrow on the world map (off: find your way old-school; the party still shows)
 		iconsFrom = 0,          -- the places' icons from this zoom (ICONS_FROM; 1: the whole world); 0: each from its own (Auto)
-		iconScale = 1,          -- OpenMap's icons at this times their own size (ICON_SCALE)
+		iconScale = 2,          -- OpenMap's icons at this times their own size (ICON_SCALE)
+		iconScaleDoubled = true, -- (the default went from 1 to 2: Migrate)
 		brightness = 1,         -- brightness of the whole stitched map; icons keep their own colour
 		darkening = 1,          -- how dark darkened unexplored areas are (0..1 of the full shade)
 		darkenColor = false,    -- their shade's colour, { r, g, b } (false: the game-like dark one)
@@ -42,7 +43,8 @@ local mod = ns:NewModule("worldmap", {
 		maxZoom = 48 * (ns.ClientMaps and ns.ClientMaps.zoom or 1),   -- x the whole-world view (MAX_ZOOM: what it can
 		                        --  be set to; a world of smaller zones goes as much further: Data\<client>\Client.lua)
 		chart = false,          -- Santiago Reyes's sea chart round the world (Chart.lua)
-		padMap = false,         -- OpenMap's map with the Gamepad UI on too (Gamepad.lua binds B and full screen; a test)
+		padMap = true,          -- OpenMap's map with the Gamepad UI on too, over Blizzard's (PadOverlay.lua)
+		padMapShown = true,     -- (padMap's switch is in Options: Migrate)
 	},
 })
 
@@ -52,6 +54,10 @@ function mod.Migrate(db)
 	-- (friends and guild were one switch too, `friends`, and its menu row's id: the friends row keeps
 	-- that id, and a save's single choice carries to the guild's switch too)
 	if db.guild == nil then db.guild = db.friends end
+	-- (padMap's switch was hidden: a save's false was the old default, not a choice)
+	if db.padMapShown == nil then db.padMap = true end
+	-- (a save's 1 was the old default, not a choice)
+	if db.iconScaleDoubled == nil and (db.iconScale == nil or db.iconScale == 1) then db.iconScale = 2 end
 end
 
 local ICONS_FROM = { 0, 20, 0.5 }   -- iconsFrom's least (0: Auto), most, step (zoom: times the whole-world view)
@@ -69,6 +75,7 @@ local PLAYER_ABOVE = 8500       -- the player's arrow: this many levels over the
                                 --  lifted over the art, and other addons' at fixed levels), under a dungeon's map (+8800)
 
 local map, sc
+local hosted = false            -- set up on OpenMap's overlay (PadOverlay.lua), not on Blizzard's map
 local active = false            -- the current map is stitched
 local switching = false         -- we're changing the map ourselves
 local userMoved = false         -- the view moved since Blizzard last showed a map (only then do we follow it)
@@ -247,7 +254,9 @@ local function PadCursor()
 	local l, b, w, h = soft:GetRect()
 	if not l then return end
 	local es = soft:GetEffectiveScale()
-	return (l + w / 2) * es, (b + h / 2) * es
+	local x, y = (l + w / 2) * es, (b + h / 2) * es
+	if hosted and mod.PadToOverlay then return mod.PadToOverlay(x, y) end   -- (a wider overlay: PadOverlay.lua)
+	return x, y
 end
 
 -- Blizzard puts the gamepad's cursor back in the middle of the map whenever the canvas changes
@@ -255,6 +264,7 @@ end
 -- map underneath as you look round (and lays the canvas out again), so the cursor is put back where
 -- it was, as the cursor places itself (SoftCursorMixin:OnUpdate), within its new bounds
 local function KeepPadCursor(fn, ...)
+	if hosted then return fn(...) end   -- (the overlay's canvas leaves Blizzard's cursor alone: PadOverlay.lua)
 	local soft = _G.SoftCursor
 	local x, y
 	if soft and soft:IsShown() then x, y = soft:GetCenter() end
@@ -272,6 +282,7 @@ mod.KeepPadCursor = KeepPadCursor
 -- gamepad bindings again (its footer, OnMapChanged) from OpenMap's code, which the game blocks in
 -- combat, leaving the pad's buttons wrong. Such changes wait (Dungeons.lua)
 function mod.PadCombat()
+	if hosted then return false end   -- (the overlay's map changes reach no footer of Blizzard's: PadOverlay.lua)
 	return InCombatLockdown() and InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled() or false
 end
 
@@ -504,8 +515,9 @@ ticker:SetScript("OnUpdate", function(_, elapsed)
 	end
 	local mapID = map:GetMapID()
 
-	-- the player, when the map underneath can't show them
-	local pos = C_Map.GetPlayerMapPosition(mapID, "player")
+	-- the player, when the map underneath can't show them (on the overlay, always: it has no
+	-- Blizzard pins, PadOverlay.lua)
+	local pos = not hosted and C_Map.GetPlayerMapPosition(mapID, "player")
 	if pos then
 		S.SetPlayer(nil)
 	else
@@ -999,9 +1011,9 @@ local function Timed(name, fn, ...)
 	if t0 then ns.loadMs.parts[name] = debugprofilestop() - t0 end
 end
 
-local function Setup()
+local function Setup(host)
 	local setupStart = debugprofilestop and debugprofilestop()
-	map = _G.WorldMapFrame
+	map = host or _G.WorldMapFrame
 	sc = map and map.ScrollContainer
 	if not sc or not sc.CreateZoomLevels or not map.GetPinFrameLevelsManager or not map:GetPinFrameLevelsManager() then
 		ns:Print(ns.L["World map: Blizzard's map isn't the expected kind; the seamless map is off."])
@@ -1169,7 +1181,9 @@ local function Setup()
 	Timed("Friends", mod.SetupFriends, mod, map)
 	Timed("Quests", mod.SetupQuests, mod, map)
 	Timed("Dungeons", mod.SetupDungeons, mod, map)
-	Timed("Combat", mod.SetupCombat, mod, map)
+	-- (not on the overlay: Combat changes Blizzard's pin mixins, Window lays out Blizzard's map,
+	-- Compat other addons' frames on Blizzard's canvas, all under the overlay then)
+	if not host then Timed("Combat", mod.SetupCombat, mod, map) end
 	Timed("News", mod.SetupNews, mod)
 	Timed("Panel", mod.SetupPanel, mod, map)
 	Timed("Paint", mod.SetupPaint, mod, map)
@@ -1178,8 +1192,10 @@ local function Setup()
 	Timed("Bench", mod.SetupBench, mod, map)
 	Timed("Gamepad", mod.SetupGamepad, mod, map)
 	Timed("Report", mod.SetupReport, mod, map)
-	Timed("Window", mod.SetupWindow, mod, map)
-	Timed("Compat", mod.SetupCompat, mod, map)
+	if not host then
+		Timed("Window", mod.SetupWindow, mod, map)
+		Timed("Compat", mod.SetupCompat, mod, map)
+	end
 
 	if setupStart then ns.loadMs.setup = debugprofilestop() - setupStart end
 
@@ -1222,6 +1238,31 @@ function mod.CursorWorld()
 end
 -- the gamepad's cursor (screen px) while it's the one in use on the map, else nil
 function mod.PadCursor() if sc then return PadCursor() end end
+-- the left stick press on the overlay (PadOverlay.lua): Blizzard's waypoint placed or removed as its own
+-- map does (GamepadTryPlaceWaypoint), on the zone under the cursor
+function mod.PadWaypoint()
+	if not active or not UiMapPoint then return end
+	local rules = C_GameRules and Enum.GameRule and Enum.GameRule.WorldMapTrackingPinDisabled
+	if rules and C_GameRules.IsGameRuleActive(rules) then return end
+	local u, v = mod.CursorWorld()
+	local chain = u and S.ChainAt(u, v)
+	local mapID = chain and chain[#chain]
+	if not mapID or mapID == WORLD then return end
+	if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(mapID) then return end
+	local x, y = FromWorld(mapID, u, v)
+	local at = C_Map.GetUserWaypointPositionForMap and C_Map.GetUserWaypointPositionForMap(mapID)
+	local wx, wy
+	if at then wx, wy = at:GetXY() end
+	if wx and math.abs(wx - x) <= 0.03 and math.abs(wy - y) <= 0.03 then
+		C_Map.ClearUserWaypoint()
+		PlaySound(SOUNDKIT.UI_MAP_WAYPOINT_REMOVE)
+	elseif pcall(C_Map.SetUserWaypoint, UiMapPoint.CreateFromCoordinates(mapID, x, y)) then
+		PlaySound(SOUNDKIT.UI_MAP_WAYPOINT_CLICK_TO_PLACE)
+	else
+		return
+	end
+	if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then C_SuperTrack.SetSuperTrackedUserWaypoint(false) end
+end
 mod.ToWorld = function(mapID, x, y) return ToWorld(mapID, x, y) end
 function mod.ViewHalfExtents(zoom)
 	local pu, pv = PerPx(zoom)
@@ -1267,8 +1308,7 @@ end
 -- Blizzard's code may ("OpenMap has been blocked from an action only available to the Blizzard UI").
 -- With the Gamepad UI on at login OpenMap leaves the map alone, touching nothing of it, until the UI
 -- is off; turned on later, the map is OpenMap's already and only a reload gives it back. Options'
--- padMap keeps OpenMap's map with the Gamepad UI too: Gamepad.lua binds B and the full-screen buttons
--- to secure clicks of the map's own buttons, which the game doesn't block (mod.PadKeys)
+-- padMap puts OpenMap's own canvas over Blizzard's map instead (PadOverlay.lua)
 local started = false
 local function Start()
 	started = true
@@ -1279,6 +1319,25 @@ local function Start()
 	end
 end
 
+-- with the Gamepad UI: OpenMap's map on its own overlay over Blizzard's (PadOverlay.lua). One host a session:
+-- each module keeps the map it was set up on
+function mod.StartOnOverlay(host)
+	if started or hosted then return end
+	hosted = true
+	mod.enabled, mod.padWaits = true, nil
+	Setup(host)
+end
+function mod.OnBlizzardMap() return started end
+function mod.HostFrame() return map end
+
+-- an OpenMap action that opens the map first (the menu, a key binding): never with the overlay. Blizzard's
+-- map opened from OpenMap's code sets the pad's bindings as OpenMap's, and the game then blocks the B close
+function mod.OpenBlizzardMap()
+	if hosted then return false end
+	ToggleWorldMap()
+	return true
+end
+
 -- (said once at login, and whenever /openmap or the options are opened while it waits)
 function mod.PadOffText()
 	return ns.L["The Gamepad UI is on, so OpenMap leaves the world map to Blizzard: with OpenMap's map the game blocks the controller's buttons (B to close the map). Turn the Gamepad UI off for OpenMap's map."]
@@ -1287,7 +1346,11 @@ end
 local styleOwner = {}
 local function StyleChanged()
 	if PadUI() then
-		if started and not mod.db.padMap then ns:Print(ns.L["The Gamepad UI is on: /reload so OpenMap leaves the world map to Blizzard (until then the game may block closing the map with the controller)."]) end
+		if started then
+			ns:Print(ns.L["The Gamepad UI is on: /reload so OpenMap leaves the world map to Blizzard (until then the game may block closing the map with the controller)."])
+		elseif mod.db.padMap and mod.StartPadOverlay then
+			mod.StartPadOverlay()
+		end
 	elseif mod.padWaits then
 		if InCombatLockdown() then      -- (set up out of combat, as at login)
 			ns.RegisterEvent(styleOwner, "PLAYER_REGEN_ENABLED", function()
@@ -1300,27 +1363,31 @@ local function StyleChanged()
 		mod.enabled = true
 		Start()
 		ns:Print(ns.L["The Gamepad UI is off: OpenMap's map is back."])
+	elseif hosted then
+		ns:Print(ns.L["The Gamepad UI is off: /reload for OpenMap's map in Blizzard's."])
 	end
 end
 
--- Options' padMap turned on or off: on, while OpenMap waits for the Gamepad UI to go, its map at once;
--- off with the Gamepad UI on and the map OpenMap's, only a reload gives it back
+-- Options' padMap turned on or off: with the Gamepad UI, OpenMap's overlay (PadOverlay.lua), never OpenMap's map
+-- in Blizzard's; that one, set up already (started without the Gamepad UI), goes only with a reload
 function mod.SetPadMap(on)
-	if on and mod.padWaits and not InCombatLockdown() then
-		mod.padWaits = nil
-		mod.enabled = true
-		Start()
-	elseif not on and started and PadUI() then
-		ns:Print(ns.L["The Gamepad UI is on: /reload so OpenMap leaves the world map to Blizzard (until then the game may block closing the map with the controller)."])
+	if PadUI() then
+		if started then
+			ns:Print(ns.L["The Gamepad UI is on: /reload so OpenMap leaves the world map to Blizzard (until then the game may block closing the map with the controller)."])
+		elseif on and mod.StartPadOverlay then
+			mod.StartPadOverlay()
+		end
 	end
 	if mod.PadKeys then mod.PadKeys() end
 end
 
 function mod:OnEnable()
 	ns.RegisterEvent(styleOwner, "INPUT_DEVICE_INTERFACE_TRANSITION", StyleChanged)
-	if PadUI() and not self.db.padMap then
+	if PadUI() then
 		self.enabled, self.padWaits = false, true
-		if not self.db.padNoted then
+		if self.db.padMap then
+			if mod.StartPadOverlay then mod.StartPadOverlay() end
+		elseif not self.db.padNoted then
 			self.db.padNoted = true
 			ns:Print(mod.PadOffText())
 		end
@@ -1471,10 +1538,9 @@ function mod:Options()
 			desc = ns.L["Once the map stops moving, it loads the zone or continent you're looking at: its quest areas, coordinates and name, and other addons' icons for it (Questie's, GatherLite's ...). Off, the map keeps the zone it opened on."] },
 		hoverHighlight = { type = "toggle", name = ns.L["Highlight the zone under the cursor"], order = 11, width = "full", get = get, set = set, disabled = off,
 			desc = ns.L["Blizzard's glow on the zone you're pointing at."] },
-		-- (not shown yet: it isn't working in game; the setting and Gamepad.lua's keys stay for when it's taken up again)
 		padMap = { type = "toggle", name = ns.L["OpenMap's map with the controller (test)"], order = 12, width = "full", get = get,
-			set = function(info, v) set(info, v) mod.SetPadMap(v) end, hidden = true,
-			desc = ns.L["With the game's Gamepad UI on, OpenMap's map instead of Blizzard's. The controller's B and full-screen buttons on the map are OpenMap's then, so the game doesn't block them. Still being tried out: if the game blocks something, turn this off and /reload."] },
+			set = function(info, v) set(info, v) mod.SetPadMap(v) end,
+			desc = ns.L["With the game's Gamepad UI on, OpenMap's map over the map area of Blizzard's. Blizzard's map stays open under it and keeps its own controller buttons (B closes it). Still being tried out."] },
 		lookHeader = ns.Header(ns.L["Look"], 20),
 		brightness = { type = "range", name = ns.L["Map brightness"], order = 20.5, min = 0.25, max = 1, step = 0.05, isPercent = true,
 			get = get, set = set, disabled = off,

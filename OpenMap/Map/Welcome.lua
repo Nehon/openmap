@@ -59,11 +59,11 @@ local function Build(map)
 end
 
 function mod:ShowWelcome()
-	local map = WorldMapFrame
+	local map = mod.HostFrame and mod.HostFrame() or WorldMapFrame   -- (the overlay with the Gamepad UI: PadOverlay.lua)
 	if not map then return end
 	if not frame then Build(map) end
 	if map:IsShown() then frame:Show() return end
-	ToggleWorldMap()
+	if not mod.OpenBlizzardMap() then return end
 	C_Timer.After(0, function() if map:IsShown() then frame:Show() end end)
 end
 

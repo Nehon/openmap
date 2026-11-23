@@ -218,7 +218,7 @@ end
 -- the route nearest the cursor, within HOVER_PX
 local function Hover()
 	local u, v, pu, pv = mod.CursorWorld()
-	local map = WorldMapFrame
+	local map = mod.HostFrame and mod.HostFrame() or WorldMapFrame   -- (the overlay with the Gamepad UI: PadOverlay.lua)
 	if not u or not pu or (map and map.IsCanvasMouseFocus and not map:IsCanvasMouseFocus() and not mod.PadCursor()) then return Light(nil) end
 	local best, bestD = nil, HOVER_PX
 	for _, route in ipairs(routes) do

@@ -759,7 +759,7 @@ function mod:TogglePins(on)
 	if not list then return end
 	if on == nil then on = not list:IsShown() end
 	if on then
-		if not map:IsShown() then ToggleWorldMap() end
+		if not map:IsShown() then mod.OpenBlizzardMap() end
 		RefreshList()
 		local at = mod.db.pinsAt                   -- (where it was dragged to)
 		if at then

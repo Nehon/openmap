@@ -19,6 +19,12 @@ mod.defaults.allQuests = true   -- the quests in your log from every zone (off: 
 local BADGE = { atlas = "UI-QuestPoi-QuestNumber", texture = "Interface\\GossipFrame\\ActiveQuestIcon", size = 22 }
 local IN_PROGRESS = { atlas = "Quest-In-Progress-Icon-yellow", texture = "Interface\\GossipFrame\\IncompleteQuestIcon" }
 local TURN_IN = { atlas = "UI-QuestPoi-QuestBangTurnIn", texture = "Interface\\GossipFrame\\ActiveQuestIcon" }
+-- the super-tracked quest's, as Blizzard marks its own (POIButton.lua:76, :696): yellow, its mark dark
+local TRACKED = {
+	badge = { atlas = "UI-QuestPoi-QuestNumber-SuperTracked", texture = BADGE.texture, size = BADGE.size },
+	inProgress = { atlas = "Quest-In-Progress-Icon-Brown", texture = IN_PROGRESS.texture },
+	turnIn = { atlas = TURN_IN.atlas, texture = TURN_IN.texture, color = { 0, 0, 0 } },
+}
 local SAME = 0.002              -- world (normalized): one quest's icons this close are one
 local EVERY = 0.5               -- seconds: the quest log changes in bursts
 local NONE = {}
@@ -51,7 +57,9 @@ local function Enter(pin)
 			if text and not finished then GameTooltip:AddLine((_G.QUEST_DASH or "- ") .. text, 1, 1, 1, true) end
 		end
 	end
-	GameTooltip:AddLine((map and map.IsMaximized and map:IsMaximized()) and L["Click: track this quest and zoom to it"]
+	-- (no quest log beside the map: full screen, or the overlay with the Gamepad UI, where X opens the details: PadOverlay.lua)
+	local noLog = not (map and map.QuestLog) or map.IsMaximized and map:IsMaximized()
+	GameTooltip:AddLine(noLog and L["Click: track this quest and zoom to it"]
 		or L["Click: track this quest, zoom to it and show it in the quest log"], 0.6, 0.6, 0.6)
 	GameTooltip:Show()
 end
@@ -84,15 +92,35 @@ local function Click(pin)
 	if log:IsShown() then details(q.id) end
 end
 
+-- the quest of one of these icons, else nil (PadOverlay.lua's X)
+function mod.QuestOfPin(pin)
+	return pin and pin.OnClick == Click and pin.data and pin.data.id or nil
+end
+
+-- the view in on a quest of the log, where its icon is (the overlay, on Blizzard's ping of it: PadOverlay.lua)
+function mod.GlideToQuest(questID)
+	local mapOf = G("GetQuestUiMapID")
+	local mapID = questID and mapOf and mapOf(questID)
+	if not mapID or mapID == 0 or not mod.IsStitched() or not S.GlideToWorld then return end
+	for _, q in ipairs(C_QuestLog.GetQuestsOnMap(mapID) or NONE) do
+		if q.questID == questID and q.x and q.y then
+			local u, v = mod.ToWorld(mapID, q.x, q.y)
+			if u then S.GlideToWorld(u, v, ZOOM_TO) end
+			return
+		end
+	end
+end
+
 -- the state mark over a pin's badge (made once: pins are pooled, and this set's are only ever quests)
-local function Mark(pin, complete)
+local function Mark(pin, complete, tracked)
 	if not pin.questMark then
 		pin.questMark = pin:CreateTexture(nil, "OVERLAY")
 		pin.questMark:SetPoint("CENTER")
 	end
 	local m, size = pin.questMark, BADGE.size * 0.6
 	m:SetSize(size, size)
-	S.Look(m, complete and TURN_IN or IN_PROGRESS)
+	if tracked then S.Look(m, complete and TRACKED.turnIn or TRACKED.inProgress)
+	else S.Look(m, complete and TURN_IN or IN_PROGRESS) end
 	m:Show()
 end
 
@@ -106,8 +134,9 @@ function mod:RefreshQuests()
 		and not (GetCVarBool and not GetCVarBool("questPOI"))
 	S.SetPinSetOn(set, on)
 	if not on then return end
-	-- the map underneath: Blizzard draws its quests (a continent, only the super-tracked one)
-	local host = mod.HostMap()
+	-- the map underneath: Blizzard draws its quests (a continent, only the super-tracked one). Not on
+	-- OpenMap's overlay with the Gamepad UI, which has no Blizzard pins (PadOverlay.lua): all are ours
+	local host = mod.OnBlizzardMap() and mod.HostMap() or nil
 	local hostInfo = host and C_Map.GetMapInfo(host)
 	local continent = hostInfo and hostInfo.mapType == Enum.UIMapType.Continent
 	local tracked = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID()
@@ -130,8 +159,8 @@ function mod:RefreshQuests()
 					if key and not seen[key] and not onHost then
 						seen[key] = true
 						local complete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(id) or false
-						local pin = S.AddPin(set, u, v, BADGE, { id = id, complete = complete })
-						Mark(pin, complete)
+						local pin = S.AddPin(set, u, v, id == tracked and TRACKED.badge or BADGE, { id = id, complete = complete })
+						Mark(pin, complete, id == tracked)
 						pin:SetScript("OnEnter", Enter)
 						pin:SetScript("OnLeave", GameTooltip_Hide)
 						pin.OnClick = Click
@@ -142,17 +171,60 @@ function mod:RefreshQuests()
 	end
 end
 
+-- the flag of a guard's directions (Blizzard's GossipDataProvider): Blizzard shows it on its place's own map
+-- only. Here from every stitched map; on Blizzard's map, its host's flag is Blizzard's own pin
+local flagSet
+local function FlagEnter(pin)
+	GameTooltip:SetOwner(pin, "ANCHOR_RIGHT")
+	GameTooltip:SetText(pin.data or "?", 1, 0.82, 0)
+	GameTooltip:Show()
+end
+local function RefreshFlag()
+	if not flagSet and S.IsBuilt() then flagSet = S.PinSet("gossip", 0, 5) end
+	if not flagSet then return end
+	S.ClearPinSet(flagSet)
+	local gossip = C_GossipInfo
+	local coords = C_Minimap and C_Minimap.GetPOITextureCoords
+	if not (gossip and gossip.GetPoiForUiMapID and gossip.GetPoiInfo and coords and mod.IsStitched()) then return end
+	local seen = {}
+	local function Add(mapID, draw)
+		local id = gossip.GetPoiForUiMapID(mapID)
+		local poi = id and gossip.GetPoiInfo(mapID, id)
+		if not (poi and poi.position) then return end
+		local u, v = mod.ToWorld(mapID, poi.position:GetXY())
+		if not u then return end
+		local key = math.floor(u / SAME) .. ":" .. math.floor(v / SAME)
+		if seen[key] then return end
+		seen[key] = true
+		if not draw then return end
+		local look = { texture = "Interface\\Minimap\\POIIcons", coords = { coords(poi.textureIndex) }, size = 16 }
+		local pin = S.AddPin(flagSet, u, v, look, poi.name)
+		pin:SetScript("OnEnter", FlagEnter)
+		pin:SetScript("OnLeave", GameTooltip_Hide)
+	end
+	local host = mod.OnBlizzardMap() and mod.HostMap() or nil
+	if host and S.Rect(host) then Add(host, false) end   -- (a dungeon's map has no place in the world: no Rect)
+	for _, mapID in ipairs(Maps()) do
+		if mapID ~= host then Add(mapID, true) end
+	end
+end
+
 -- (a burst of quest log updates: one refresh)
 local function Soon()
 	if dirty then return end
 	dirty = true
-	C_Timer.After(EVERY, function() if dirty then mod:RefreshQuests() end end)
+	C_Timer.After(EVERY, function()
+		if not dirty then return end
+		mod:RefreshQuests()
+		RefreshFlag()
+	end)
 end
 
 function mod:SetupQuests(worldMap)
 	map = worldMap
 	local events = CreateFrame("Frame")
-	for _, e in ipairs({ "QUEST_LOG_UPDATE", "QUEST_POI_UPDATE", "QUEST_WATCH_LIST_CHANGED", "SUPER_TRACKING_CHANGED", "CVAR_UPDATE" }) do
+	for _, e in ipairs({ "QUEST_LOG_UPDATE", "QUEST_POI_UPDATE", "QUEST_WATCH_LIST_CHANGED", "SUPER_TRACKING_CHANGED", "CVAR_UPDATE",
+		"DYNAMIC_GOSSIP_POI_UPDATED" }) do
 		pcall(events.RegisterEvent, events, e)
 	end
 	events:SetScript("OnEvent", function(_, event, cvar)

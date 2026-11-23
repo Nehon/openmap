@@ -338,6 +338,8 @@ function mod:SetupFlights()
 	if c and c.flightsKnownV ~= 2 then c.flightsKnown, c.flightsKnownV = nil, 2 end
 	ns.RegisterEvent(mod, "TAXIMAP_OPENED", OnTaxiMap)
 	ns.RegisterEvent(mod, "TAXI_NODE_STATUS_CHANGED", function() if set then RefreshLook() end end)
-	if WorldMapFrame then WorldMapFrame:HookScript("OnShow", function() if set then RefreshLook() end end) end
+	-- (the overlay with the Gamepad UI: PadOverlay.lua; Blizzard's map then takes no hook)
+	local host = mod.HostFrame and mod.HostFrame() or WorldMapFrame
+	if host then host:HookScript("OnShow", function() if set then RefreshLook() end end) end
 	if TakeTaxiNode then hooksecurefunc("TakeTaxiNode", OnTakeTaxi) end
 end

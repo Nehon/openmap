@@ -1659,7 +1659,8 @@ function mod:SetupPanel(worldMap)
 
 	mod.OnPinMode = function() RefreshTiles() RefreshFavorites() end
 	-- the quest log opened or closed by Blizzard's own button too
-	local log = map.QuestLog or _G.QuestMapFrame
+	-- (not on the overlay with the Gamepad UI: it has no quest log tile, and Blizzard's map takes no hook then)
+	local log = map.QuestLog or map == _G.WorldMapFrame and _G.QuestMapFrame
 	if log and log.HookScript then
 		local function Changed() RefreshTiles() RefreshFavorites() end
 		log:HookScript("OnShow", Changed)
@@ -1675,7 +1676,7 @@ end
 function mod:OpenMenu()
 	if not menu then return false end
 	if not map:IsShown() then
-		ToggleWorldMap()
+		if not mod.OpenBlizzardMap() then return false end
 		C_Timer.After(0, function() if map:IsShown() then SetOpen(true) end end)
 	else
 		SetOpen(true)
@@ -1699,7 +1700,7 @@ function _G.OpenMap_Binding(id)
 	if not run then return end
 	if map:IsShown() then run("LeftButton") return end
 	if InCombatLockdown() then return end          -- (as the menu's own button: no opening the map in combat)
-	ToggleWorldMap()
+	if not mod.OpenBlizzardMap() then return end
 	C_Timer.After(0, function() if map:IsShown() then run("LeftButton") end end)
 end
 

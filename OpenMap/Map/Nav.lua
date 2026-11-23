@@ -415,7 +415,7 @@ local function RefreshGroup()
 	if not groupSet then return end
 	S.ClearPinSet(groupSet)
 	if not mod.db.group or not mod.IsStitched() or not IsInGroup() then return end
-	local host = mod.HostMap()
+	local host = mod.OnBlizzardMap() and mod.HostMap() or nil   -- (the overlay has no Blizzard pins: all ours)
 	local raid = IsInRaid()
 	for i = 1, raid and 40 or 4 do
 		local unit = (raid and "raid" or "party") .. i

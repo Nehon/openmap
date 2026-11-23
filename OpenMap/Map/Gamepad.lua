@@ -101,6 +101,9 @@ function mod.PadPress(x, y, noPins)
 	return true
 end
 
+-- what's under the gamepad's cursor, as last entered (PadOverlay.lua's X)
+function mod.PadHovered() return hovered end
+
 --------------------------------------------------------------------------------
 -- The controller's B and full-screen buttons on OpenMap's map with the Gamepad UI (Options' padMap).
 -- Blizzard binds them to its map footer's actions, made again on every map change; on OpenMap's map

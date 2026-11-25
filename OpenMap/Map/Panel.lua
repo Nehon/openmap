@@ -322,8 +322,8 @@ local function Rows()
 	rows[#rows + 1] = optRow(L["Load the zone in view"], "autoSwitch", Icon("Ability_Hunter_Pathfinding"))
 	fromOptions(L["Ctrl-click drops a pin"], "ctrlClickPin", Icon("INV_Misc_Map_01"))
 	rows[#rows + 1] = { L["Reopen map (choose one)"] }
-	for _, choice in ipairs({ { "player", L["Center on player"] }, { "zoom", L["Center on player, keep zoom"] }, { "always", L["Always remember"] },
-		{ "visible", L["Remember while visible"] } }) do
+	for _, choice in ipairs({ { "player", L["Center on player"] }, { "zoom", L["Center on player, keep zoom"] },
+		{ "closest", L["Center on player, closest zoom"] }, { "always", L["Always remember"] }, { "visible", L["Remember while visible"] } }) do
 		local mode = choice[1]
 		rows[#rows + 1] = row(choice[2], "reopenView." .. mode, Icon("INV_Misc_Rune_01"),
 			function() return mod.GetReopenView() == mode end,

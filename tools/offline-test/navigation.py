@@ -36,6 +36,7 @@ class NavigationTests(unittest.TestCase):
             function mod.ViewHalfExtents() return .1, .05 end
             function mod.IsStitched() return true end
             function mod.FitZoom() return 8 end
+            function mod.MaxZoomAt() return 48 end
             function mod.Glide(u, v, zoom) target = { u, v, zoom } end
             function ns:Print() end
         """)
@@ -59,8 +60,8 @@ class NavigationTests(unittest.TestCase):
             assert(not opts.rememberView and not opts.rememberViewInView)
             local count = 0
             for _ in pairs(opts.reopenView.values) do count = count + 1 end
-            assert(count == 4)
-            for _, mode in ipairs({ 'player', 'zoom', 'always', 'visible' }) do
+            assert(count == 5)
+            for _, mode in ipairs({ 'player', 'zoom', 'closest', 'always', 'visible' }) do
                 opts.reopenView.set({ 'reopenView' }, mode)
                 assert(opts.reopenView.get({ 'reopenView' }) == mode)
             end
@@ -128,6 +129,17 @@ class NavigationTests(unittest.TestCase):
             assert(mod.SavedView(999) == nil)
         """)
 
+    def test_closest_mode_opens_on_player_at_deepest_zoom(self):
+        self.lua.execute("""
+            mod.db.reopenView = 'closest'
+            playerU, playerV = .8, .7
+            local u, v, zoom = mod.SavedView()
+            assert(u == playerU and v == playerV and zoom == 48)
+            -- (put back on the next frame too, with no view saved)
+            assert(mod.SavedView(nil, true) == playerU)
+            assert(mod.SavedView(999) == nil)
+        """)
+
     def test_first_open_centers_on_player(self):
         self.lua.execute("""
             playerU, playerV = .8, .7
@@ -164,7 +176,7 @@ class NavigationTests(unittest.TestCase):
                     choices[#choices + 1] = row
                 end
             end
-            assert(#choices == 4)
+            assert(#choices == 5)
             function mod:Refresh() end
             for _, selected in ipairs(choices) do
                 selected[3](true)

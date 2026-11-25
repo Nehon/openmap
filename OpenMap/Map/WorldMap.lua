@@ -45,6 +45,7 @@ local mod = ns:NewModule("worldmap", {
 		chart = false,          -- Santiago Reyes's sea chart round the world (Chart.lua)
 		padMap = true,          -- OpenMap's map with the Gamepad UI on too, over Blizzard's (PadOverlay.lua)
 		padMapShown = true,     -- (padMap's switch is in Options: Migrate)
+		reopenClosest = true,   -- (reopenView's "closest" choice was added: Migrate)
 	},
 })
 
@@ -58,6 +59,8 @@ function mod.Migrate(db)
 	if db.padMapShown == nil then db.padMap = true end
 	-- (a save's 1 was the old default, not a choice)
 	if db.iconScaleDoubled == nil and (db.iconScale == nil or db.iconScale == 1) then db.iconScale = 2 end
+	-- (the map opens on you at the closest zoom: the choice is set once, the menu changes it)
+	if db.reopenClosest == nil then db.reopenView = "closest" end
 end
 
 local ICONS_FROM = { 0, 20, 0.5 }   -- iconsFrom's least (0: Auto), most, step (zoom: times the whole-world view)
@@ -1281,6 +1284,7 @@ function mod.PanTo(u, v)
 end
 function mod.Animating() return anim ~= nil end
 function mod.FitZoom(mapID) return FitZoom(mapID) end
+function mod.MaxZoomAt(u, v) return MaxZoomAt(u, v) end
 -- the deepest zoom (the menu's slider and the options): the zoom levels are rebuilt for it
 function mod.SetMaxZoom(v)
 	mod.db.maxZoom = math.max(MAX_ZOOM[1], math.min(MAX_ZOOM[2], v))

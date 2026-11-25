@@ -94,8 +94,9 @@ function mod.SavedView(mapID, onlySaved)
 		local hu, hv = mod.ViewHalfExtents(saved[3])
 		restore = math.abs(u - saved[1]) <= hu and math.abs(v - saved[2]) <= hv
 	end
-	-- (with "zoom", the zoom kept counts as saved: put back on the next frame too, as a saved view is)
-	if onlySaved and not restore and not (saved and mode == "zoom") then return end
+	-- (with "zoom", the zoom kept counts as saved: put back on the next frame too, as a saved view is;
+	-- "closest" too: on the overlay, a map opened on the same map as before has no zoom reset)
+	if onlySaved and not restore and not (saved and mode == "zoom") and mode ~= "closest" then return end
 	local display = Safe.Call(MapUtil and MapUtil.GetDisplayableMapForPlayer)
 	if restore then
 		if mapID and mapID ~= saved[5] and mapID ~= zone and mapID ~= display then return end
@@ -106,6 +107,7 @@ function mod.SavedView(mapID, onlySaved)
 	-- own extra half that the wheel can still go to; with "zoom", the zoom it closed at)
 	local u, v, best = UnitWorld("player")
 	if u and mode == "zoom" and saved then return u, v, saved[3] end   -- (the zoom it closed at)
+	if u and mode == "closest" then return u, v, mod.MaxZoomAt(u, v) end   -- (the deepest zoom there)
 	if u then return u, v, math.min(mod.FitZoom(best), mod.db.maxZoom or math.huge) end
 end
 
@@ -477,9 +479,9 @@ end
 function mod:NavOptions(opts, get, set, off)
 	opts.reopenView = { type = "select", name = L["When reopening the map"], order = 11,
 		get = mod.GetReopenView, set = set, disabled = off,
-		values = { player = L["Center on player"], zoom = L["Center on player, keep zoom"], always = L["Always remember"],
-			visible = L["Remember while visible"] }, sorting = { "player", "zoom", "always", "visible" },
-		desc = L["Choose one behavior. Center on player: always open on you. Center on player, keep zoom: open on you, at the zoom you closed the map at. Always remember: restore your previous position and zoom, even after changing zones. Remember while visible: restore only if your current location is inside the previous view, even across zone boundaries. Otherwise, open on you. Maps opened for a quest still show the quest's area."] }
+		values = { player = L["Center on player"], zoom = L["Center on player, keep zoom"], closest = L["Center on player, closest zoom"],
+			always = L["Always remember"], visible = L["Remember while visible"] }, sorting = { "player", "zoom", "closest", "always", "visible" },
+		desc = L["Choose one behavior. Center on player: always open on you. Center on player, keep zoom: open on you, at the zoom you closed the map at. Center on player, closest zoom: open on you, zoomed in as far as the map goes there. Always remember: restore your previous position and zoom, even after changing zones. Remember while visible: restore only if your current location is inside the previous view, even across zone boundaries. Otherwise, open on you. Maps opened for a quest still show the quest's area."] }
 	opts.group = { type = "toggle", name = L["Party and raid members"], order = 35, get = get, set = set, disabled = off,
 		desc = L["Class-coloured dots for your group anywhere on the stitched map."] }
 end

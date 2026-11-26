@@ -69,6 +69,7 @@ local ICON_SCALE = { 0.6, 2, 0.05 } -- iconScale's least, most, step
 mod.ICON_SCALE = ICON_SCALE
 
 local ZOOM_STEP = 1.25          -- each wheel notch
+mod.ZOOM_STEP = ZOOM_STEP
 local MAX_ZOOM = { 16, 192, 8 } -- the deepest zoom's setting: least, most, step (the minimap's own detail runs out
                                 --  near 48; past it the painted map and the minimap are only enlarged)
 mod.MAX_ZOOM = MAX_ZOOM

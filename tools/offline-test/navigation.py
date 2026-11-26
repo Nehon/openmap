@@ -37,6 +37,7 @@ class NavigationTests(unittest.TestCase):
             function mod.IsStitched() return true end
             function mod.FitZoom() return 8 end
             function mod.MaxZoomAt() return 48 end
+            mod.ZOOM_STEP = 2
             function mod.Glide(u, v, zoom) target = { u, v, zoom } end
             function ns:Print() end
         """)
@@ -129,12 +130,12 @@ class NavigationTests(unittest.TestCase):
             assert(mod.SavedView(999) == nil)
         """)
 
-    def test_closest_mode_opens_on_player_at_deepest_zoom(self):
+    def test_closest_mode_opens_on_player_near_deepest_zoom(self):
         self.lua.execute("""
             mod.db.reopenView = 'closest'
             playerU, playerV = .8, .7
             local u, v, zoom = mod.SavedView()
-            assert(u == playerU and v == playerV and zoom == 48)
+            assert(u == playerU and v == playerV and zoom == 6)
             -- (put back on the next frame too, with no view saved)
             assert(mod.SavedView(nil, true) == playerU)
             assert(mod.SavedView(999) == nil)

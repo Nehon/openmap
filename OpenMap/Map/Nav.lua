@@ -20,6 +20,7 @@ local d = mod.defaults
 d.group = true
 
 local map, sc
+local CLOSEST_OUT = 3   -- "closest" opens this many wheel notches out from the deepest zoom
 
 
 -- a unit's place on the world (normalized), or nil (secret, in an instance, unknown)
@@ -107,7 +108,7 @@ function mod.SavedView(mapID, onlySaved)
 	-- own extra half that the wheel can still go to; with "zoom", the zoom it closed at)
 	local u, v, best = UnitWorld("player")
 	if u and mode == "zoom" and saved then return u, v, saved[3] end   -- (the zoom it closed at)
-	if u and mode == "closest" then return u, v, mod.MaxZoomAt(u, v) end   -- (the deepest zoom there)
+	if u and mode == "closest" then return u, v, mod.MaxZoomAt(u, v) / mod.ZOOM_STEP ^ CLOSEST_OUT end
 	if u then return u, v, math.min(mod.FitZoom(best), mod.db.maxZoom or math.huge) end
 end
 
